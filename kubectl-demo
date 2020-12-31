@@ -1,0 +1,127 @@
+#!/bin/bash
+trap ctrl_c INT
+function ctrl_c() {
+  echo "**************************************** Trapped CTRL-C ****************************************"
+  for pid in ${PIDS[@]}
+  do
+      kill -TERM $pid 
+  done
+  rm $NAMED_PIPE
+  rm $sync
+  exit 0
+}
+
+function colorize() {
+
+  pod=$1
+  counter=$2
+  pre_colour="\\033[3${counter}m"
+  post_colour="\\033[0m"
+  if [ "$colorize_output" = true ]
+  then
+    colour_pod="${pre_colour}[${pod}]${post_colour}"
+  else
+    colour_pod="[${pod}]"
+  fi
+}
+
+function show_logs() {
+  local sync="$1"
+  grep -E -f $sync $NAMED_PIPE &
+}
+
+function banner() {
+  echo "==================================================="
+  echo "+ Showing logs for:"
+  echo "+ $1"
+  echo "==================================================="
+}
+
+function start_log() {
+  show_logs $sync 
+  shl_pid=$!
+  disown $shl_pid
+  PIDS+=$shl_pid" "  
+}
+
+function usage() {
+  echo "~~~~~~~~~~~"
+  echo " U S A G E"
+  echo "~~~~~~~~~~~"
+  echo "Usage: kubectl demo [option]"
+  echo "  options:"
+  echo "    --no-colorize: no colorize [default: colorize]"
+  echo "    -h: Show this help"
+  echo ""
+}
+
+NAMED_PIPE="/tmp/my_named_pipe"
+PODS=$(kubectl get pods -o=custom-columns=NAME:.metadata.name | grep fake)
+TOTAL_PODS=$(echo $PODS | sed -s 's/\ /\n/g' | wc -l)
+colorize_output=true
+
+if [[ $@ ]]; then
+  # while getopts "dmh" opt; do
+    # case $opt in  
+    case "$@" in
+      "--no-colorize")
+        colorize_output=false
+        ;;
+      "-h")
+        usage
+        exit 1
+        ;;
+      *) echo "Invalid option"
+        exit 1
+        ;;
+    esac
+  # done
+fi
+
+
+# create named pipe
+if [ ! -p $NAMED_PIPE ]
+then
+    mkfifo $NAMED_PIPE
+    chmod a+rw $NAMED_PIPE
+fi
+
+PIDS=()
+declare -A pods_index
+counter=1
+for pod in $(echo $PODS)
+do
+  colour_pod=""
+  colorize $pod $counter
+  kubectl logs -f $pod | awk -v pod_name=$colour_pod '{print pod_name" "$0}' > $NAMED_PIPE &
+  PIDS+=$!" "
+  pods_index[$counter]=$pod
+  counter=$((counter+1))
+done
+
+# Shared memory segment for inter process comunication
+sync=/dev/shm/syntest-$$  # allocate a shared memory segment name for this process
+echo '' > $sync           # init the shm
+
+start_log
+input="*"
+re='^[0-9]+$'
+
+while true
+do
+  read -t 0.25 -N 1 input
+  if  [[ $input =~ $re ]]  && [ "$input" -ge "0" ] && [ "$input" -le "$TOTAL_PODS" ]
+  then
+    if [ "$input" -eq "0" ]
+    then
+      banner "All Pods"
+      echo $ > $sync
+    else
+      banner ${pods_index[$input]}
+      echo ${pods_index[$input]} > $sync
+    fi
+    kill -SIGTERM $shl_pid
+    PIDS=$(echo $PID | sed -e "s/$shl_pid//g" | tr -s " ")
+    start_log
+  fi
+done
