@@ -1,7 +1,7 @@
 #!/bin/bash
 trap ctrl_c INT
 function ctrl_c() {
-  echo "**************************************** Trapped CTRL-C ****************************************"
+  echo "**************************************** Bye Bye ****************************************"
   for pid in ${PIDS[@]}
   do
       kill -TERM $pid 
@@ -31,10 +31,12 @@ function show_logs() {
 }
 
 function banner() {
+  echo ""
   echo "==================================================="
   echo "+ Showing logs for:"
   echo "+ $1"
   echo "==================================================="
+  echo ""
 }
 
 function start_log() {
@@ -53,29 +55,29 @@ function usage() {
   echo "    --no-colorize: no colorize [default: colorize]"
   echo "    -h: Show this help"
   echo ""
+  echo "When running you can use the numbers 1 to N to filter N-pod and only show it's output."
+  echo "0 resets and shows all outputs again"
+  echo ""
 }
 
 NAMED_PIPE="/tmp/my_named_pipe"
-PODS=$(kubectl get pods -o=custom-columns=NAME:.metadata.name | grep fake)
+PODS=$(kubectl get pods --no-headers=true -o=custom-columns=NAME:.metadata.name)
 TOTAL_PODS=$(echo $PODS | sed -s 's/\ /\n/g' | wc -l)
 colorize_output=true
 
 if [[ $@ ]]; then
-  # while getopts "dmh" opt; do
-    # case $opt in  
-    case "$@" in
-      "--no-colorize")
-        colorize_output=false
-        ;;
-      "-h")
-        usage
-        exit 1
-        ;;
-      *) echo "Invalid option"
-        exit 1
-        ;;
-    esac
-  # done
+  case "$@" in
+    "--no-colorize")
+      colorize_output=false
+      ;;
+    "-h")
+      usage
+      exit 1
+      ;;
+    *) echo "Invalid option"
+      exit 1
+      ;;
+  esac
 fi
 
 
