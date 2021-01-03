@@ -15,6 +15,7 @@ function colorize() {
 
   pod=$1
   counter=$2
+  # colors from 31 to 39
   pre_colour="\\033[3${counter}m"
   post_colour="\\033[0m"
   if [ "$colorize_output" = true ]
@@ -96,18 +97,18 @@ do
   colour_pod=""
   colorize $pod $counter
   kubectl logs -f $pod | awk -v pod_name=$colour_pod '{print pod_name" "$0}' > $NAMED_PIPE &
-  PIDS+=$!" "
+  PIDS+=$!" " # save all PIDs
   pods_index[$counter]=$pod
   counter=$((counter+1))
 done
 
-# Shared memory segment for inter process comunication
-sync=/dev/shm/syntest-$$  # allocate a shared memory segment name for this process
+# Trick: Shared memory segment for inter process comunication. 
+sync=/dev/shm/syntest-$$  # allocate a shared memory segment name for this pid
 echo '' > $sync           # init the shm
 
 start_log
 input="*"
-re='^[0-9]+$'
+re='^[0-9]+$' # we match only numbers
 
 while true
 do
@@ -117,13 +118,13 @@ do
     if [ "$input" -eq "0" ]
     then
       banner "All Pods"
-      echo $ > $sync
+      echo $ > $sync    # grep everything
     else
       banner ${pods_index[$input]}
-      echo ${pods_index[$input]} > $sync
+      echo ${pods_index[$input]} > $sync  # grep only pod name
     fi
     kill -SIGTERM $shl_pid
-    PIDS=$(echo $PID | sed -e "s/$shl_pid//g" | tr -s " ")
+    PIDS=$(echo $PID | sed -e "s/$shl_pid//g" | tr -s " ")  # remove unused pid
     start_log
   fi
 done
